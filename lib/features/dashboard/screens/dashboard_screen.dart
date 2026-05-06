@@ -1559,10 +1559,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                     ),
                   const SizedBox(width: 4),
-                  // Trip/Odometer Action
+                  /* // Trip/Odometer Action
                   if (_isExecutive || _isTelecaller)
                     _buildTripActionButton(showLabels),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 4), */
                   _headerActionIcon(
                     icon: Icons.power_settings_new_rounded,
                     color: Colors.redAccent,
@@ -1653,6 +1653,11 @@ class _DashboardScreenState extends State<DashboardScreen>
         const Color(0xFFB71C1C),
       ]; // Red
     } else {
+      return const SizedBox.shrink();
+    }
+
+    // Hide Start Trip/Enter Odo if not checked in (since it's now inside check-in)
+    if (_todayAttendance == null && !tripInProgress) {
       return const SizedBox.shrink();
     }
 

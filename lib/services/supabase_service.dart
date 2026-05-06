@@ -2147,17 +2147,23 @@ class SupabaseService {
     });
   }
 
-  static Future<void> startExecutiveTrip() async {
+  static Future<String?> startExecutiveTrip() async {
     final userId = client.auth.currentUser?.id;
-    if (userId == null) return;
-    
-    await client.from('expenses').insert({
+    if (userId == null) return null;
+
+    // Check if there's already an active trip
+    final existing = await getActiveExpenseForExecutive(userId);
+    if (existing != null) return existing['id']?.toString();
+
+    final response = await client.from('expenses').insert({
       'executive_id': userId,
-      'amount_allotted': 0.0,
-      'status': 'ACTIVE',
-      'allotment_status': 'RECEIVED', // No allotment needed, using hand cash
+      'status': 'APPROVED',
+      'allotment_status': 'RECEIVED',
       'created_at': DateTime.now().toIso8601String(),
-    });
+      'updated_at': DateTime.now().toIso8601String(),
+    }).select().single();
+
+    return response['id']?.toString();
   }
 
   static Future<void> receiveExpenseFunds(String expenseId) async {

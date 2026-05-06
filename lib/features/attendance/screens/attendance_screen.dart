@@ -32,6 +32,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   bool _isTelecaller = false;
   bool _isManager = false;
 
+  // Odometer Fields for integrated check-in
+  final _odoController = TextEditingController();
+  String? _selectedVehicle;
+  String? _selectedOwnership;
+  File? _odoImage;
+  String? _odoImageUrl;
+
   @override
   void initState() {
     super.initState();
@@ -240,8 +247,25 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
+  Future<void> _takeOdoPhoto() async {
+    final XFile? photo = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 50,
+    );
+    if (photo != null) {
+      setState(() => _odoImage = File(photo.path));
+    }
+  }
+
   Future<void> _handleSubmit() async {
-    if (_image == null) {
+    final isCheckedIn = _todayAttendance != null && _todayAttendance!['check_out_time'] == null;
+    final isCheckIn = _todayAttendance == null;
+    final needsOdometer = isCheckedIn && _activeTrip != null && _activeTrip!['start_odometer_reading'] == null;
+    final tripInProgress = isCheckedIn && _activeTrip != null && _activeTrip!['start_odometer_reading'] != null && _activeTrip!['end_odometer_reading'] == null;
+    final needsOdoDuringCheckIn = isCheckIn && (_isExecutive || _isTelecaller || _isManager);
+    final needsTripOdo = needsOdoDuringCheckIn || (needsOdometer && (_isExecutive || _isTelecaller || _isManager));
+
+    if (isCheckIn && _image == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please take a photo first'),
@@ -249,6 +273,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ),
       );
       return;
+    }
+
+    if (needsTripOdo) {
+      if (_selectedVehicle == null || _selectedOwnership == null || _odoController.text.isEmpty || _odoImage == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please complete vehicle details and odometer reading'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
     }
 
     if (_currentPosition == null) {
@@ -263,89 +299,42 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
     setState(() => _isSubmitting = true);
     try {
-      final isCheckIn = _todayAttendance == null;
-      final fileName =
-          '${SupabaseService.client.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-      final imageUrl = await SupabaseService.uploadImage(
-        await _image!.readAsBytes(),
-        fileName,
-        'attendance',
-      );
-
-      final attendanceData = {
-        if (isCheckIn)
-          'check_in_time': DateTime.now().toIso8601String()
-        else
-          'check_out_time': DateTime.now().toIso8601String(),
-
-        if (isCheckIn)
-          'check_in_photo': imageUrl
-        else
-          'check_out_photo': imageUrl,
-
-        if (isCheckIn)
-          'check_in_location_lat': _currentPosition!.latitude
-        else
-          'check_out_location_lat': _currentPosition!.latitude,
-
-        if (isCheckIn)
-          'check_in_location_lng': _currentPosition!.longitude
-        else
-          'check_out_location_lng': _currentPosition!.longitude,
-
-        'created_at': DateTime.now().toIso8601String(),
-        // Only keep local bytes if upload failed
-        '_local_photo': null,
-      };
-
-      if (!isCheckIn) attendanceData['id'] = _todayAttendance!['id'];
-
-      if (kIsWeb) {
-        if (isCheckIn) {
-          await SupabaseService.checkIn({
-            'check_in_time': DateTime.now().toIso8601String(),
-            'check_in_photo': imageUrl,
-            'check_in_location_lat': _currentPosition!.latitude,
-            'check_in_location_lng': _currentPosition!.longitude,
-          });
-        } else {
-          await SupabaseService.checkOut(_todayAttendance!['id'], {
-            'check_out_time': DateTime.now().toIso8601String(),
-            'check_out_photo': imageUrl,
-            'check_out_location_lat': _currentPosition!.latitude,
-            'check_out_location_lng': _currentPosition!.longitude,
-          });
-        }
-      } else {
-        await LocalDatabaseService.saveAndQueue(
-          tableName: 'attendance',
-          data: attendanceData,
-          operation: isCheckIn ? 'INSERT' : 'UPDATE',
-        );
-        SyncManager().sync();
-      }
-
       if (isCheckIn) {
-        // After Check-In: Trigger trip start for field staff and managers
+        await _handleAttendance();
         if (_isExecutive || _isTelecaller || _isManager) {
-          _showStartTripDialog();
+          await _handleTripStart();
         }
+      } else if (needsOdometer) {
+        await _handleTripStart();
+      } else if (tripInProgress) {
+        await _handleTripEnd();
+      } else {
+        await _handleAttendance();
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              isCheckIn
-                  ? 'Checked In Successfully'
-                  : 'Checked Out Successfully',
+              needsOdoDuringCheckIn
+                  ? 'Checked In & Trip Started Successfully'
+                  : needsOdometer
+                      ? 'Trip Started Successfully'
+                      : tripInProgress
+                          ? 'Trip Ended Successfully'
+                          : isCheckIn
+                              ? 'Checked In Successfully'
+                              : 'Checked Out Successfully',
             ),
             backgroundColor: AppColors.primary,
           ),
         );
         _loadData(); // Refresh UI
-        setState(() => _image = null);
+        setState(() {
+          _image = null;
+          _odoImage = null;
+          _odoController.clear();
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -358,8 +347,109 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
+  Future<void> _handleAttendance() async {
+    final isCheckIn = _todayAttendance == null;
+    final isCheckedIn = _todayAttendance != null && _todayAttendance!['check_out_time'] == null;
+
+    String? imageUrl;
+    if (_image != null) {
+      final fileName =
+          '${SupabaseService.client.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      imageUrl = await SupabaseService.uploadImage(
+        await _image!.readAsBytes(),
+        fileName,
+        'attendance',
+      );
+    }
+
+    final attendanceData = {
+      if (isCheckIn)
+        'check_in_time': DateTime.now().toIso8601String()
+      else if (isCheckedIn)
+        'check_out_time': DateTime.now().toIso8601String(),
+
+      if (isCheckIn)
+        'check_in_photo': imageUrl
+      else if (isCheckedIn)
+        'check_out_photo': imageUrl,
+
+      if (isCheckIn || isCheckedIn)
+        'check_in_location_lat': _currentPosition!.latitude,
+
+      if (isCheckIn || isCheckedIn)
+        'check_in_location_lng': _currentPosition!.longitude,
+
+      'created_at': DateTime.now().toIso8601String(),
+      '_local_photo': null,
+    };
+
+    if (kIsWeb) {
+      if (isCheckIn) {
+        await SupabaseService.checkIn({
+          'check_in_time': DateTime.now().toIso8601String(),
+          'check_in_photo': imageUrl,
+          'check_in_location_lat': _currentPosition!.latitude,
+          'check_in_location_lng': _currentPosition!.longitude,
+        });
+      } else {
+        await SupabaseService.checkOut(_todayAttendance!['id'], {
+          'check_out_time': DateTime.now().toIso8601String(),
+          'check_out_photo': imageUrl,
+          'check_out_location_lat': _currentPosition!.latitude,
+          'check_out_location_lng': _currentPosition!.longitude,
+        });
+      }
+    } else {
+      await LocalDatabaseService.saveAndQueue(
+        tableName: 'attendance',
+        data: attendanceData,
+        operation: isCheckIn ? 'INSERT' : 'UPDATE',
+      );
+      SyncManager().sync();
+    }
+  }
+
+  Future<void> _handleTripStart() async {
+    final tripId = await SupabaseService.startExecutiveTrip();
+    if (tripId != null && _odoController.text.isNotEmpty && _odoImage != null) {
+      final odoFileName = 'odo_${tripId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final odoPhotoUrl = await SupabaseService.uploadImage(
+        await _odoImage!.readAsBytes(),
+        odoFileName,
+        'expense-documents',
+      );
+
+      await SupabaseService.updateTripStart(
+        expenseId: tripId,
+        vehicleType: _selectedVehicle!,
+        ownership: _selectedOwnership!,
+        odometer: double.parse(_odoController.text),
+        photoUrl: odoPhotoUrl,
+      );
+    }
+  }
+
+  Future<void> _handleTripEnd() async {
+    if (_activeTrip == null || _odoController.text.isEmpty || _odoImage == null) return;
+    
+    final odoFileName = 'odo_end_${_activeTrip!['id']}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final odoPhotoUrl = await SupabaseService.uploadImage(
+      await _odoImage!.readAsBytes(),
+      odoFileName,
+      'expense-documents',
+    );
+
+    await SupabaseService.updateTripEnd(
+      expenseId: _activeTrip!['id'],
+      odometer: double.parse(_odoController.text),
+      photoUrl: odoPhotoUrl,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isCheckIn = _todayAttendance == null;
     final isCheckedIn =
         _todayAttendance != null && _todayAttendance!['check_out_time'] == null;
     final isCompleted =
@@ -485,6 +575,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                           ),
                         ),
 
+                        const SizedBox(height: 32),
+
+                        if ((isCheckIn || needsOdometer) && (_isExecutive || _isTelecaller || _isManager))
+                          _buildOdometerSection(),
+                        
+                        if (tripInProgress && (_isExecutive || _isTelecaller || _isManager))
+                          _buildEndTripSection(),
+
                         const SizedBox(height: 40),
 
                         if (isCompleted)
@@ -502,20 +600,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                             child: ElevatedButton(
                               onPressed: _isSubmitting 
                                 ? null 
-                                : needsOdometer 
-                                  ? _showStartTripDialog 
-                                  : tripInProgress 
-                                    ? _showEndTripDialog 
-                                    : _handleSubmit,
+                                : _handleSubmit,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor:
-                                    needsOdometer 
-                                        ? Colors.blue
-                                        : tripInProgress
-                                          ? Colors.redAccent
-                                          : isCheckedIn
-                                            ? Colors.orange
-                                            : AppColors.primary,
+                                    isCheckIn
+                                        ? AppColors.primary
+                                        : needsOdometer 
+                                            ? Colors.blue
+                                            : tripInProgress
+                                              ? Colors.redAccent
+                                              : Colors.orange,
                               ),
                               child:
                                   _isSubmitting
@@ -523,13 +617,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                         color: Colors.white,
                                       )
                                       : Text(
-                                        needsOdometer 
-                                          ? 'Start Trip' 
-                                          : tripInProgress 
-                                            ? 'End Trip' 
-                                            : isCheckedIn 
-                                              ? 'Check Out' 
-                                              : 'Check In',
+                                        isCheckIn
+                                          ? ((_isExecutive || _isTelecaller || _isManager) ? 'Check In & Start Trip' : 'Check In')
+                                          : needsOdometer 
+                                            ? 'Start Trip' 
+                                            : tripInProgress 
+                                              ? 'End Trip' 
+                                              : 'Check Out',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                             ),
                           ),
@@ -645,6 +744,206 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
         ],
       ),
+    );
+  }
+  Widget _choiceChip(String label, bool selected, VoidCallback onSelected) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onSelected(),
+      selectedColor: AppColors.primary.withOpacity(0.2),
+      labelStyle: TextStyle(
+        color: selected ? AppColors.primary : Colors.black,
+        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+      ),
+    );
+  }
+
+  Widget _buildOdometerSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 48),
+        const Text(
+          'Start Trip Details',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'Vehicle Type',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            _choiceChip(
+              'Two Wheeler',
+              _selectedVehicle == 'TWO_WHEELER',
+              () => setState(() => _selectedVehicle = 'TWO_WHEELER'),
+            ),
+            const SizedBox(width: 12),
+            _choiceChip(
+              'Four Wheeler',
+              _selectedVehicle == 'FOUR_WHEELER',
+              () => setState(() => _selectedVehicle = 'FOUR_WHEELER'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'Vehicle Ownership',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            _choiceChip(
+              'Own Vehicle',
+              _selectedOwnership == 'OWN',
+              () => setState(() => _selectedOwnership = 'OWN'),
+            ),
+            const SizedBox(width: 12),
+            _choiceChip(
+              'Company Vehicle',
+              _selectedOwnership == 'COMPANY',
+              () => setState(() => _selectedOwnership = 'COMPANY'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 32),
+        TextField(
+          controller: _odoController,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'Current Odometer Reading',
+            prefixIcon: const Icon(Icons.speed_rounded),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            filled: true,
+            fillColor: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'Odometer Photo',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: _takeOdoPhoto,
+          child: Container(
+            width: double.infinity,
+            height: 150,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.secondary),
+            ),
+            child: _odoImage != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.file(_odoImage!, fit: BoxFit.cover),
+                  )
+                : const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_a_photo_rounded, color: AppColors.textGray),
+                        SizedBox(height: 8),
+                        Text('Take Odometer Photo', style: TextStyle(color: AppColors.textGray)),
+                      ],
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEndTripSection() {
+    final startOdo = double.tryParse(_activeTrip!['start_odometer_reading']?.toString() ?? '0') ?? 0.0;
+    final endOdo = double.tryParse(_odoController.text) ?? 0.0;
+    final distance = endOdo - startOdo;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 48),
+        const Text(
+          'End Trip Details',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.redAccent,
+          ),
+        ),
+        const SizedBox(height: 24),
+        TextField(
+          controller: _odoController,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'End Odometer Reading',
+            prefixIcon: const Icon(Icons.speed_rounded),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            filled: true,
+            fillColor: Colors.white,
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        if (_odoController.text.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            distance >= 0 
+              ? 'Total Distance: ${distance.toStringAsFixed(1)} KM'
+              : 'Reading must be >= $startOdo',
+            style: TextStyle(
+              color: distance >= 0 ? AppColors.primary : Colors.red,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ],
+        const SizedBox(height: 24),
+        const Text(
+          'End Odometer Photo',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: _takeOdoPhoto,
+          child: Container(
+            width: double.infinity,
+            height: 150,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.secondary),
+            ),
+            child: _odoImage != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.file(_odoImage!, fit: BoxFit.cover),
+                  )
+                : const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_a_photo_rounded, color: AppColors.textGray),
+                        SizedBox(height: 8),
+                        Text('Take Odometer Photo', style: TextStyle(color: AppColors.textGray)),
+                      ],
+                    ),
+                  ),
+          ),
+        ),
+      ],
     );
   }
 }
