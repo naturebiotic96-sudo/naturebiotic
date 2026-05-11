@@ -6,12 +6,14 @@ class VisitCalendarScreen extends StatefulWidget {
   final List<dynamic> reminders;
   final List<dynamic> allFarms;
   final List<dynamic> allCrops;
+  final List<dynamic> allFarmers;
 
   const VisitCalendarScreen({
     super.key,
     required this.reminders,
     required this.allFarms,
     required this.allCrops,
+    required this.allFarmers,
   });
 
   @override
@@ -251,8 +253,67 @@ class _VisitCalendarScreenState extends State<VisitCalendarScreen> {
       itemCount: visits.length,
       itemBuilder: (context, index) {
         final reminder = visits[index];
-        final farm = widget.allFarms.firstWhere((f) => f['id'] == reminder['farm_id'], orElse: () => <String, dynamic>{});
-        final crop = widget.allCrops.firstWhere((c) => c['id'] == reminder['crop_id'], orElse: () => <String, dynamic>{});
+        
+        String displayName = 'Unknown';
+        String subName = 'General Checkup';
+        String ownerName = 'N/A';
+        
+        final bool isManagerReminder = reminder['reminder_type'] != null;
+        
+        if (isManagerReminder) {
+          displayName = reminder['title'] ?? 'Unknown';
+          subName = reminder['subtitle'] ?? '';
+          final type = reminder['reminder_type'];
+          final data = reminder['data'] ?? <String, dynamic>{};
+          
+          if (type == 'farmer') {
+            ownerName = data['name'] ?? 'N/A';
+          } else if (type == 'farm') {
+            final farmer = widget.allFarmers.firstWhere(
+              (f) => f['id'] == data['farmer_id'],
+              orElse: () => <String, dynamic>{},
+            );
+            ownerName = farmer['name'] ?? 'N/A';
+          } else if (type == 'crop') {
+            final farm = widget.allFarms.firstWhere(
+              (f) => f['id'] == data['farm_id'],
+              orElse: () => <String, dynamic>{},
+            );
+            final farmer = widget.allFarmers.firstWhere(
+              (f) => f['id'] == farm['farmer_id'],
+              orElse: () => <String, dynamic>{},
+            );
+            ownerName = farmer['name'] ?? 'N/A';
+          } else if (type == 'report') {
+            final farm = widget.allFarms.firstWhere(
+              (f) => f['id'] == data['farm_id'],
+              orElse: () => <String, dynamic>{},
+            );
+            final farmer = widget.allFarmers.firstWhere(
+              (f) => f['id'] == farm['farmer_id'],
+              orElse: () => <String, dynamic>{},
+            );
+            ownerName = farmer['name'] ?? 'N/A';
+          }
+        } else {
+          // Executive Path
+          final farm = widget.allFarms.firstWhere(
+            (f) => f['id'] == reminder['farm_id'],
+            orElse: () => <String, dynamic>{},
+          );
+          final crop = widget.allCrops.firstWhere(
+            (c) => c['id'] == reminder['crop_id'],
+            orElse: () => <String, dynamic>{},
+          );
+          final farmer = widget.allFarmers.firstWhere(
+            (f) => f['id'] == farm['farmer_id'],
+            orElse: () => <String, dynamic>{},
+          );
+          
+          displayName = farm['name'] ?? 'Unknown Farm';
+          subName = crop['name'] ?? 'General Checkup';
+          ownerName = farmer['name'] ?? 'N/A';
+        }
         
         return Container(
           margin: const EdgeInsets.only(bottom: 20),
@@ -289,11 +350,11 @@ class _VisitCalendarScreenState extends State<VisitCalendarScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            farm['name'] ?? 'Unknown Farm',
+                            displayName,
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                           Text(
-                            crop['name'] ?? 'General Checkup',
+                            subName,
                             style: TextStyle(color: AppColors.textGray, fontSize: 13),
                           ),
                         ],
@@ -311,7 +372,7 @@ class _VisitCalendarScreenState extends State<VisitCalendarScreen> {
                         const Icon(Icons.person_outline_rounded, size: 14, color: AppColors.textGray),
                         const SizedBox(width: 4),
                         Text(
-                          'Owner: ${farm['farmer_name'] ?? 'N/A'}',
+                          'Owner: $ownerName',
                           style: const TextStyle(color: AppColors.textGray, fontSize: 12),
                         ),
                       ],

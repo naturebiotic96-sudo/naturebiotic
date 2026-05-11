@@ -122,7 +122,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final attendance = await SupabaseService.getTodayAttendance();
 
       Map<String, dynamic>? activeTrip;
-      if (isExecutive || isTelecaller) {
+      if (isExecutive || isTelecaller || isManager) {
         final userId = SupabaseService.client.auth.currentUser?.id;
         if (userId != null) {
           activeTrip = await SupabaseService.getActiveExpenseForExecutive(
@@ -994,6 +994,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         reminders: _reminders,
                         allFarms: _allFarms,
                         allCrops: _allCrops,
+                        allFarmers: _allFarmers,
                       ),
                 ),
               ),
@@ -1537,8 +1538,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                   const SizedBox(width: 4),
                   // Premium Attendance Button
-                  if (!_isManager)
-                    GestureDetector(
+                  GestureDetector(
                       onTap:
                           () => Navigator.push(
                             context,
@@ -1767,7 +1767,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     final bool isCurrentlyCheckedIn =
         _todayAttendance != null && _todayAttendance!['check_out_time'] == null;
 
-    if (isCurrentlyCheckedIn && !_isAdmin && !_isManager) {
+    if (isCurrentlyCheckedIn && !_isAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please Check Out before logging out'),

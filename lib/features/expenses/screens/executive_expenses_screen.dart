@@ -18,6 +18,7 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
   Map<String, dynamic>? _activeExpense;
   bool _isLoading = true;
   bool _isTelecaller = false;
+  bool _isManager = false;
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -37,6 +38,7 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
         );
         setState(() {
           _isTelecaller = profile?['role'] == 'telecaller';
+          _isManager = profile?['role'] == 'manager';
           _activeExpense = expense;
         });
       }
@@ -108,13 +110,13 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              _isTelecaller ? Icons.account_balance_wallet_rounded : Icons.directions_car_rounded,
+              (_isTelecaller || _isManager) ? Icons.account_balance_wallet_rounded : Icons.directions_car_rounded,
               size: 80,
               color: AppColors.primary.withOpacity(0.2),
             ),
             const SizedBox(height: 24),
             Text(
-              _isTelecaller ? 'No Active Expense' : 'No Active Trip',
+              (_isTelecaller || _isManager) ? 'No Active Expense' : 'No Active Trip',
               style: GoogleFonts.outfit(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -122,13 +124,13 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
             ),
             const SizedBox(height: 8),
             Text(
-              _isTelecaller 
+              (_isTelecaller || _isManager) 
                   ? 'Please check in or start a daily expense.'
                   : 'Please start a trip from the Dashboard.',
               style: const TextStyle(color: AppColors.textGray),
             ),
             const SizedBox(height: 32),
-            if (_isTelecaller)
+            if (_isTelecaller || _isManager)
               ElevatedButton.icon(
                 onPressed: () async {
                   setState(() => _isLoading = true);
@@ -158,8 +160,8 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
                 label: const Text('Refresh Status'),
               ),
             
-            if (_isTelecaller) const SizedBox(height: 16),
-            if (_isTelecaller)
+            if (_isTelecaller || _isManager) const SizedBox(height: 16),
+            if (_isTelecaller || _isManager)
               TextButton.icon(
                 onPressed: _loadActiveExpense,
                 icon: const Icon(Icons.refresh_rounded),

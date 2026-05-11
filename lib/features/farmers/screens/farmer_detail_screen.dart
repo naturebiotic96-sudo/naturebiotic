@@ -355,14 +355,14 @@ class _FarmerDetailScreenState extends State<FarmerDetailScreen>
                       ),
                     ),
                     const SizedBox(width: 12),
-                    if (_farmer['is_verified'] == true) ...[
-                      _buildVerifiedBadge(),
-                      const SizedBox(width: 8),
-                      _buildRiseTokenButton(),
-                    ],
+                    if (_farmer['is_verified'] == true) _buildVerifiedBadge(),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
+                if (_farmer['is_verified'] == true) ...[
+                  _buildRiseTokenButton(),
+                  const SizedBox(height: 8),
+                ],
                 _buildCategoryBadge(),
               ],
             ),
@@ -670,34 +670,34 @@ class _FarmerDetailScreenState extends State<FarmerDetailScreen>
         ),
         const SizedBox(height: 24),
         Center(
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                _farmer['name'] ?? 'N/A',
-                style: GoogleFonts.outfit(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textBlack,
-                  letterSpacing: -0.5,
+              Flexible(
+                child: Text(
+                  _farmer['name'] ?? 'N/A',
+                  style: GoogleFonts.outfit(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textBlack,
+                    letterSpacing: -0.5,
+                  ),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                textAlign: TextAlign.center,
               ),
-              if (_farmer['is_verified'] == true)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildVerifiedBadge(),
-                    const SizedBox(width: 8),
-                    _buildRiseTokenButton(),
-                  ],
-                ),
+              if (_farmer['is_verified'] == true) ...[
+                const SizedBox(width: 8),
+                _buildVerifiedBadge(),
+              ],
             ],
           ),
         ),
+        if (_farmer['is_verified'] == true) ...[
+          const SizedBox(height: 12),
+          Center(child: _buildRiseTokenButton()),
+        ],
       ],
     );
   }

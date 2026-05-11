@@ -180,21 +180,24 @@ class __CropDetailScreenState extends State<CropDetailScreen> {
                             ),
                             Row(
                               children: [
-                                Text(
-                                  _crop['name'] ?? 'N/A',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
+                                Expanded(
+                                  child: Text(
+                                    _crop['name'] ?? 'N/A',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                if (_crop['is_verified'] == true) ...[
-                                  const SizedBox(width: 8),
+                                if (_crop['is_verified'] == true)
                                   const Icon(Icons.verified_rounded, color: Colors.blue, size: 18),
-                                  const SizedBox(width: 8),
-                                  _buildRiseTokenButton(),
-                                ],
                               ],
                             ),
+                            if (_crop['is_verified'] == true) ...[
+                              const SizedBox(height: 6),
+                              _buildRiseTokenButton(),
+                            ],
                           ],
                         ),
                       ),

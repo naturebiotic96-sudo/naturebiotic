@@ -279,17 +279,21 @@ class _FarmDetailScreenState extends State<FarmDetailScreen> with WidgetsBinding
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                if (_farm['is_verified'] == true) ...[
+                                if (_farm['is_verified'] == true) 
                                   const Icon(
                                     Icons.verified_rounded,
                                     color: Colors.white,
                                     size: 20,
                                   ),
-                                  const SizedBox(width: 8),
-                                  _buildRiseTokenButton(),
-                                ],
                               ],
                             ),
+                            if (_farm['is_verified'] == true) ...[
+                              const SizedBox(height: 6),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: _buildRiseTokenButton(),
+                              ),
+                            ],
                             const SizedBox(height: 6),
                             Text(
                               'Registered: ${_formatDate(_farm['created_at'])}',
