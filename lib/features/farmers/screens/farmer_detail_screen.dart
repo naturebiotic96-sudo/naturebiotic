@@ -665,32 +665,37 @@ class _FarmerDetailScreenState extends State<FarmerDetailScreen>
                 ),
                 child: _buildCategoryBadge(),
               ),
-              if (_farmer['is_verified'] == true)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildVerifiedBadge(),
-                      const SizedBox(width: 4),
-                      _buildRiseTokenButton(),
-                    ],
-                  ),
-                ),
             ],
           ),
         ),
         const SizedBox(height: 24),
         Center(
-          child: Text(
-            _farmer['name'] ?? 'N/A',
-            style: GoogleFonts.outfit(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textBlack,
-              letterSpacing: -0.5,
-            ),
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              Text(
+                _farmer['name'] ?? 'N/A',
+                style: GoogleFonts.outfit(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textBlack,
+                  letterSpacing: -0.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (_farmer['is_verified'] == true)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildVerifiedBadge(),
+                    const SizedBox(width: 8),
+                    _buildRiseTokenButton(),
+                  ],
+                ),
+            ],
           ),
         ),
       ],

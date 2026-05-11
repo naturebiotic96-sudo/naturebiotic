@@ -199,79 +199,81 @@ class _FarmerListScreenState extends State<FarmerListScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 20),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: AppColors.primary.withOpacity(
-                                          0.2,
-                                        ),
+                            if (_userRole == 'admin' || _userRole == 'manager') ...[
+                              const SizedBox(height: 20),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
                                       ),
-                                    ),
-                                    child: DropdownButtonHideUnderline(
-                                      child: DropdownButton<String>(
-                                        value: _selectedStaffId,
-                                        hint: const Text(
-                                          'Filter by Staff Member',
-                                        ),
-                                        isExpanded: true,
-                                        icon: const Icon(
-                                          Icons.keyboard_arrow_down_rounded,
-                                          color: AppColors.primary,
-                                        ),
-                                        items: [
-                                          const DropdownMenuItem<String>(
-                                            value: null,
-                                            child: Text('All Staff Members'),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: AppColors.primary.withOpacity(
+                                            0.2,
                                           ),
-                                          ..._teamMembers.map((staff) {
-                                            return DropdownMenuItem<String>(
-                                              value: staff['id'],
-                                              child: Text(
-                                                staff['full_name'] ?? 'Staff',
-                                              ),
-                                            );
-                                          }),
-                                        ],
-                                        onChanged:
-                                            (v) => setState(
-                                              () => _selectedStaffId = v,
+                                        ),
+                                      ),
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<String>(
+                                          value: _selectedStaffId,
+                                          hint: const Text(
+                                            'Filter by Staff Member',
+                                          ),
+                                          isExpanded: true,
+                                          icon: const Icon(
+                                            Icons.keyboard_arrow_down_rounded,
+                                            color: AppColors.primary,
+                                          ),
+                                          items: [
+                                            const DropdownMenuItem<String>(
+                                              value: null,
+                                              child: Text('All Staff Members'),
                                             ),
+                                            ..._teamMembers.map((staff) {
+                                              return DropdownMenuItem<String>(
+                                                value: staff['id'],
+                                                child: Text(
+                                                  staff['full_name'] ?? 'Staff',
+                                                ),
+                                              );
+                                            }),
+                                          ],
+                                          onChanged:
+                                              (v) => setState(
+                                                () => _selectedStaffId = v,
+                                              ),
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                TextButton.icon(
-                                  onPressed: () {
-                                    setState(() {
-                                      _selectedStaffId = null;
-                                      _searchController.clear();
-                                    });
-                                  },
-                                  icon: const Icon(
-                                    Icons.backspace_outlined,
-                                    size: 16,
-                                  ),
-                                  label: const Text('Clear'),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: AppColors.textGray,
-                                    textStyle: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
+                                  const SizedBox(width: 12),
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _selectedStaffId = null;
+                                        _searchController.clear();
+                                      });
+                                    },
+                                    icon: const Icon(
+                                      Icons.backspace_outlined,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Clear'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: AppColors.textGray,
+                                      textStyle: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),

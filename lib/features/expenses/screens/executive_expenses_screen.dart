@@ -17,6 +17,7 @@ class ExecutiveExpenseDashboard extends StatefulWidget {
 class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
   Map<String, dynamic>? _activeExpense;
   bool _isLoading = true;
+  bool _isTelecaller = false;
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -28,12 +29,16 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
   Future<void> _loadActiveExpense() async {
     setState(() => _isLoading = true);
     try {
+      final profile = await SupabaseService.getProfile();
       final userId = SupabaseService.client.auth.currentUser?.id;
       if (userId != null) {
         final expense = await SupabaseService.getActiveExpenseForExecutive(
           userId,
         );
-        setState(() => _activeExpense = expense);
+        setState(() {
+          _isTelecaller = profile?['role'] == 'telecaller';
+          _activeExpense = expense;
+        });
       }
     } catch (e) {
       debugPrint('Error loading active expense: $e');
@@ -103,13 +108,13 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.directions_car_rounded,
+              _isTelecaller ? Icons.account_balance_wallet_rounded : Icons.directions_car_rounded,
               size: 80,
               color: AppColors.primary.withOpacity(0.2),
             ),
             const SizedBox(height: 24),
             Text(
-              'No Active Trip',
+              _isTelecaller ? 'No Active Expense' : 'No Active Trip',
               style: GoogleFonts.outfit(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -117,15 +122,49 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Please start a trip from the Dashboard.',
-              style: TextStyle(color: AppColors.textGray),
+              _isTelecaller 
+                  ? 'Please check in or start a daily expense.'
+                  : 'Please start a trip from the Dashboard.',
+              style: const TextStyle(color: AppColors.textGray),
             ),
             const SizedBox(height: 32),
-            TextButton.icon(
-              onPressed: _loadActiveExpense,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Refresh Status'),
-            ),
+            if (_isTelecaller)
+              ElevatedButton.icon(
+                onPressed: () async {
+                  setState(() => _isLoading = true);
+                  final tripId = await SupabaseService.startExecutiveTrip();
+                  if (tripId != null) {
+                    await SupabaseService.updateTripStart(
+                      expenseId: tripId,
+                      vehicleType: 'None',
+                      ownership: 'None',
+                      odometer: 0,
+                    );
+                  }
+                  await _loadActiveExpense();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: const Text('Start Daily Expense'),
+              )
+            else
+              TextButton.icon(
+                onPressed: _loadActiveExpense,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Refresh Status'),
+              ),
+            
+            if (_isTelecaller) const SizedBox(height: 16),
+            if (_isTelecaller)
+              TextButton.icon(
+                onPressed: _loadActiveExpense,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Refresh Status'),
+              ),
           ],
         ),
       ),

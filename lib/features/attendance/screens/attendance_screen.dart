@@ -262,8 +262,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     final isCheckIn = _todayAttendance == null;
     final needsOdometer = isCheckedIn && _activeTrip != null && _activeTrip!['start_odometer_reading'] == null;
     final tripInProgress = isCheckedIn && _activeTrip != null && _activeTrip!['start_odometer_reading'] != null && _activeTrip!['end_odometer_reading'] == null;
-    final needsOdoDuringCheckIn = isCheckIn && (_isExecutive || _isTelecaller || _isManager);
-    final needsTripOdo = needsOdoDuringCheckIn || (needsOdometer && (_isExecutive || _isTelecaller || _isManager));
+    final needsOdoDuringCheckIn = isCheckIn && (_isExecutive || _isManager);
+    final needsTripOdo = needsOdoDuringCheckIn || (needsOdometer && (_isExecutive || _isManager));
 
     if (isCheckIn && _image == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -324,6 +324,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         await _handleTripEnd();
       } else {
         await _handleAttendance();
+        if (_isTelecaller && _activeTrip != null) {
+          await _handleTripEnd();
+        }
       }
 
       if (mounted) {
@@ -431,6 +434,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _handleTripStart() async {
     final tripId = await SupabaseService.startExecutiveTrip();
+    
+    if (_isTelecaller && tripId != null) {
+      await SupabaseService.updateTripStart(
+        expenseId: tripId,
+        vehicleType: 'None',
+        ownership: 'None',
+        odometer: 0,
+      );
+      return;
+    }
+
     if (tripId != null && _odoController.text.isNotEmpty && _odoImage != null) {
       final odoFileName = 'odo_${tripId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final odoPhotoUrl = await SupabaseService.uploadImage(
@@ -450,7 +464,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Future<void> _handleTripEnd() async {
-    if (_activeTrip == null || _odoController.text.isEmpty || _odoImage == null) return;
+    if (_activeTrip == null) return;
+    
+    if (_isTelecaller) {
+      await SupabaseService.updateTripEnd(
+        expenseId: _activeTrip!['id'],
+        odometer: 0,
+      );
+      return;
+    }
+
+    if (_odoController.text.isEmpty || _odoImage == null) return;
     
     final odoFileName = 'odo_end_${_activeTrip!['id']}_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final odoPhotoUrl = await SupabaseService.uploadImage(
@@ -477,7 +501,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     // Trip Status Logic for Field Staff and Managers
     bool needsOdometer = false;
     bool tripInProgress = false;
-    if (isCheckedIn && (_isExecutive || _isTelecaller || _isManager)) {
+    if (isCheckedIn && (_isExecutive || _isManager)) {
       needsOdometer = _activeTrip != null && _activeTrip!['start_odometer_reading'] == null;
       tripInProgress = _activeTrip != null && 
                        _activeTrip!['start_odometer_reading'] != null && 
