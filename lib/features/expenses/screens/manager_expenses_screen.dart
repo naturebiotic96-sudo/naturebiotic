@@ -18,6 +18,7 @@ class _ManagerExpenseControlState extends State<ManagerExpenseControl> {
   bool _isLoading = true;
   DateTime _startDate = DateTime.now().subtract(const Duration(days: 30));
   DateTime _endDate = DateTime.now();
+  String _userRole = 'manager';
 
   @override
   void initState() {
@@ -34,11 +35,14 @@ class _ManagerExpenseControlState extends State<ManagerExpenseControl> {
           startDate: _startDate,
           endDate: _endDate,
         ),
+        SupabaseService.getProfile(),
       ]).timeout(const Duration(seconds: 15));
       if (mounted) {
         setState(() {
-          _executives = results[0];
-          _history = results[1];
+          _executives = List<Map<String, dynamic>>.from(results[0] as Iterable);
+          _history = List<Map<String, dynamic>>.from(results[1] as Iterable);
+          final profile = results[2] as Map<String, dynamic>?;
+          _userRole = profile?['role'] ?? 'manager';
           _isLoading = false;
         });
       }
@@ -103,10 +107,9 @@ class _ManagerExpenseControlState extends State<ManagerExpenseControl> {
 
     return Material(
       color: const Color(0xFFF8F9FA),
-      child:
-          isWide
-              ? _buildWideAdminLayout(pendingReturns, activeTrips)
-              : _buildMobileLayout(pendingReturns, activeTrips),
+      child: isWide
+          ? _buildWideAdminLayout(pendingReturns, activeTrips)
+          : _buildMobileLayout(pendingReturns, activeTrips),
     );
   }
 
@@ -114,28 +117,72 @@ class _ManagerExpenseControlState extends State<ManagerExpenseControl> {
     List<Map<String, dynamic>> pending,
     List<Map<String, dynamic>> active,
   ) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      body: ListView(
-        children: [
-          _buildWideHeader(),
-          _buildFilterBar(),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.all(40),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sectionHeader(
-                  'Expense Audit Log (Date-wise)',
-                  Icons.history_rounded,
-                ),
-                const SizedBox(height: 24),
-                _buildWideHistoryTab(),
-              ],
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8F9FA),
+        body: Column(
+          children: [
+            _buildWideHeader(),
+            Container(
+              color: Colors.white,
+              child: TabBar(
+                labelColor: AppColors.primary,
+                unselectedLabelColor: AppColors.textGray,
+                indicatorColor: AppColors.primary,
+                tabs: [
+                  Tab(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.pending_actions_rounded),
+                        const SizedBox(width: 8),
+                        Text('Pending Approvals (${pending.length})', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                  Tab(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.history_rounded),
+                        const SizedBox(width: 8),
+                        const Text('All Expense Records', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _buildWidePendingTab(pending),
+                  ListView(
+                    children: [
+                      _buildFilterBar(),
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.all(40),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _sectionHeader(
+                              'Expense Audit Log (Date-wise)',
+                              Icons.history_rounded,
+                            ),
+                            const SizedBox(height: 24),
+                            _buildWideHistoryTab(),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -685,7 +732,7 @@ class _ManagerExpenseControlState extends State<ManagerExpenseControl> {
                               style: TextStyle(fontSize: 11),
                             ),
                           ),
-                          if (expense['return_status'] == 'PENDING') ...[
+                          if (_userRole != 'admin' && expense['return_status'] == 'PENDING') ...[
                             const SizedBox(width: 8),
                             ElevatedButton(
                               onPressed: () => _approveReturn(expense['id'], isClaim),
@@ -700,20 +747,22 @@ class _ManagerExpenseControlState extends State<ManagerExpenseControl> {
                               child: Text(isClaim ? 'Approve' : 'Accept', style: const TextStyle(fontSize: 11)),
                             ),
                           ],
-                          const SizedBox(width: 8),
-                          PopupMenuButton<String>(
-                            onSelected: (val) {
-                              if (val == 'delete') _deleteExpense(expense);
-                            },
-                            itemBuilder: (context) => [
-                              const PopupMenuItem(
-                                value: 'delete',
-                                child: Text('Delete', style: TextStyle(color: Colors.red)),
-                              ),
-                            ],
-                            icon: const Icon(Icons.more_vert_rounded, color: AppColors.textGray),
-                            padding: EdgeInsets.zero,
-                          ),
+                          if (_userRole != 'admin') ...[
+                            const SizedBox(width: 8),
+                            PopupMenuButton<String>(
+                              onSelected: (val) {
+                                if (val == 'delete') _deleteExpense(expense);
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Delete', style: TextStyle(color: Colors.red)),
+                                ),
+                              ],
+                              icon: const Icon(Icons.more_vert_rounded, color: AppColors.textGray),
+                              padding: EdgeInsets.zero,
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -731,9 +780,28 @@ class _ManagerExpenseControlState extends State<ManagerExpenseControl> {
     List<Map<String, dynamic>> pending,
     List<Map<String, dynamic>> active,
   ) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Expense Oversight')),
-      body: _buildHistoryTab(),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Expense Oversight'),
+          bottom: TabBar(
+            labelColor: AppColors.primary,
+            unselectedLabelColor: AppColors.textGray,
+            indicatorColor: AppColors.primary,
+            tabs: [
+              Tab(text: 'Pending (${pending.length})'),
+              Tab(text: 'All Expenses'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _buildMobilePendingTab(pending),
+            _buildHistoryTab(),
+          ],
+        ),
+      ),
     );
   }
 
@@ -766,17 +834,18 @@ class _ManagerExpenseControlState extends State<ManagerExpenseControl> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _statusChip(e['status'], e['return_status'], returnAmount),
-                PopupMenuButton<String>(
-                  onSelected: (val) {
-                    if (val == 'delete') _deleteExpense(e);
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Delete', style: TextStyle(color: Colors.red)),
-                    ),
-                  ],
-                ),
+                if (_userRole != 'admin')
+                  PopupMenuButton<String>(
+                    onSelected: (val) {
+                      if (val == 'delete') _deleteExpense(e);
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Delete', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -920,5 +989,275 @@ class _ManagerExpenseControlState extends State<ManagerExpenseControl> {
         }
       }
     }
+  }
+
+  Widget _buildWidePendingTab(List<Map<String, dynamic>> pending) {
+    if (pending.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(48),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.assignment_turned_in_rounded,
+                size: 80,
+                color: AppColors.primary.withOpacity(0.15),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'All caught up!',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'No pending claims or returns to approve.',
+                style: TextStyle(color: AppColors.textGray),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.all(40),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 400,
+        mainAxisSpacing: 24,
+        crossAxisSpacing: 24,
+        mainAxisExtent: 230,
+      ),
+      itemCount: pending.length,
+      itemBuilder: (context, index) {
+        final expense = pending[index];
+        final name = expense['profiles']?['full_name'] ?? 'Unknown';
+        String date = 'N/A';
+        if (expense['created_at'] != null) {
+          try {
+            date = DateFormat('dd MMM yyyy, hh:mm a').format(
+              DateTime.parse(expense['created_at']),
+            );
+          } catch (_) {}
+        }
+
+        final allottedVal = expense['amount_allotted'];
+        final double allotted = (allottedVal is num)
+            ? allottedVal.toDouble()
+            : (double.tryParse(allottedVal?.toString() ?? '0') ?? 0.0);
+
+        final items = List<dynamic>.from(expense['expense_items'] ?? []);
+        double spent = 0;
+        for (var item in items) {
+          final amt = item['amount'];
+          spent += (amt is num)
+              ? amt.toDouble()
+              : (double.tryParse(amt?.toString() ?? '0') ?? 0.0);
+        }
+
+        final double returnAmount = (expense['return_amount'] is num)
+            ? (expense['return_amount'] as num).toDouble()
+            : (double.tryParse(expense['return_amount']?.toString() ?? '0') ?? 0.0);
+        final isClaim = returnAmount < 0;
+
+        return Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.grey.shade200),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    _statusChip(expense['status'], expense['return_status'], returnAmount),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(date, style: const TextStyle(color: AppColors.textGray, fontSize: 12)),
+                const Spacer(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _pendingMetaCol('Allotted', '₹${allotted.toStringAsFixed(0)}'),
+                    _pendingMetaCol('Spent', '₹${spent.toStringAsFixed(0)}'),
+                    _pendingMetaCol(
+                      isClaim ? 'Claim Amount' : 'Return Amount',
+                      '₹${returnAmount.abs().toStringAsFixed(0)}',
+                      isClaim ? Colors.orange.shade700 : Colors.green,
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ExpenseDetailScreen(expense: expense),
+                            ),
+                          ).then((value) {
+                            if (value == true) _loadData();
+                          });
+                        },
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.primary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: const Text('Details', style: TextStyle(color: AppColors.primary, fontSize: 12)),
+                      ),
+                    ),
+                    if (_userRole != 'admin') ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => _approveReturn(expense['id'], isClaim),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isClaim ? Colors.orange : Colors.green,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: Text(isClaim ? 'Approve' : 'Accept', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMobilePendingTab(List<Map<String, dynamic>> pending) {
+    if (pending.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.assignment_turned_in_rounded,
+                size: 64,
+                color: AppColors.primary.withOpacity(0.15),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'All caught up!',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: pending.length,
+      itemBuilder: (context, index) {
+        final expense = pending[index];
+        final name = expense['profiles']?['full_name'] ?? 'Unknown';
+        String date = 'N/A';
+        if (expense['created_at'] != null) {
+          try {
+            date = DateFormat('dd MMM yyyy').format(
+              DateTime.parse(expense['created_at']),
+            );
+          } catch (_) {}
+        }
+
+        final double returnAmount = (expense['return_amount'] is num)
+            ? (expense['return_amount'] as num).toDouble()
+            : (double.tryParse(expense['return_amount']?.toString() ?? '0') ?? 0.0);
+        final isClaim = returnAmount < 0;
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.grey.shade100),
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ExpenseDetailScreen(expense: expense),
+                ),
+              ).then((value) {
+                if (value == true) _loadData();
+              });
+            },
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                _statusChip(expense['status'], expense['return_status'], returnAmount),
+              ],
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text('$date • ₹${expense['amount_allotted'] ?? 0} Allotted'),
+                const SizedBox(height: 4),
+                Text(
+                  isClaim 
+                      ? 'Claim Amount: ₹${returnAmount.abs().toStringAsFixed(0)}' 
+                      : 'Returned Amount: ₹${returnAmount.toStringAsFixed(0)}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: isClaim ? Colors.orange.shade700 : Colors.green,
+                  ),
+                ),
+              ],
+            ),
+            trailing: _userRole == 'admin'
+                ? null
+                : IconButton(
+                    icon: Icon(
+                      Icons.check_circle_rounded,
+                      color: isClaim ? Colors.orange : Colors.green,
+                      size: 32,
+                    ),
+                    onPressed: () => _approveReturn(expense['id'], isClaim),
+                  ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _pendingMetaCol(String label, String value, [Color? color]) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: AppColors.textGray, fontSize: 10)),
+        const SizedBox(height: 2),
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: color)),
+      ],
+    );
   }
 }

@@ -4,6 +4,7 @@ import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
+import 'package:nature_biotic/services/supabase_service.dart';
 
 class PdfService {
   static Future<void> generateAndShare({
@@ -731,6 +732,20 @@ class PdfService {
     String? dcNumber,
     String? placeOfSupply,
   }) async {
+    // Fetch logged-in user profile to check for signature
+    String? signatureUrl;
+    try {
+      final profile = await SupabaseService.getProfile();
+      signatureUrl = profile?['signature_url'];
+    } catch (_) {}
+
+    pw.ImageProvider? signatureImage;
+    if (signatureUrl != null && signatureUrl.isNotEmpty) {
+      try {
+        signatureImage = await networkImage(signatureUrl);
+      } catch (_) {}
+    }
+
     final pdf = pw.Document();
     final font = await PdfGoogleFonts.robotoRegular();
     final boldFont = await PdfGoogleFonts.robotoBold();
@@ -1016,21 +1031,39 @@ class PdfService {
                     border: pw.Border(top: pw.BorderSide(color: PdfColors.black, width: 0.8)),
                   ),
                   padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      // Left Column: Terms + Bank Details
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Text('Terms and Conditions',
                               style: pw.TextStyle(font: boldFont, fontSize: 9)),
-                          pw.Text('Authorized Signature',
-                              style: pw.TextStyle(font: boldFont, fontSize: 11)),
+                          pw.SizedBox(height: 20),
+                          pw.Text('Bank Details',
+                              style: pw.TextStyle(font: boldFont, fontSize: 9)),
                         ],
                       ),
-                      pw.SizedBox(height: 10),
-                      pw.Text('Bank Details',
-                          style: pw.TextStyle(font: boldFont, fontSize: 9)),
+                      // Right Column: Authorized Signature Label + Signature Image Preview
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.end,
+                        children: [
+                          pw.Text('Authorized Signature',
+                              style: pw.TextStyle(font: boldFont, fontSize: 11)),
+                          if (signatureImage != null) ...[
+                            pw.SizedBox(height: 4),
+                            pw.Container(
+                              height: 35,
+                              width: 90,
+                              child: pw.Image(signatureImage, fit: pw.BoxFit.contain),
+                            ),
+                          ] else ...[
+                            pw.SizedBox(height: 35),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
                 ),

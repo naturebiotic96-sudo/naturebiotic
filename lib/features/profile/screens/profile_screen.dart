@@ -154,6 +154,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _uploadSignature() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
+    if (image == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final bytes = await image.readAsBytes();
+      final fileName = 'signature_${SupabaseService.client.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final url = await SupabaseService.uploadImage(bytes, fileName, 'profiles');
+      
+      await SupabaseService.updateProfile({'signature_url': url});
+      await _fetchProfile();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -306,6 +329,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     );
                   }
                 }),
+                _profileOption(
+                  Icons.gesture_rounded,
+                  'Signature',
+                  onTap: _uploadSignature,
+                  trailing: _profile?['signature_url'] != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            color: const Color(0xFFF1F4F1),
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Image.network(
+                              _profile!['signature_url'],
+                              width: 60,
+                              height: 30,
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) => const Icon(
+                                Icons.broken_image_rounded,
+                                color: Colors.red,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                        )
+                      : const Text(
+                          'Not Uploaded',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
                 _profileOption(Icons.help_outline_rounded, 'Help & Support', onTap: () {
                   showModalBottomSheet(
                     context: context,
@@ -422,7 +477,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _profileOption(IconData icon, String title, {VoidCallback? onTap}) {
+  Widget _profileOption(IconData icon, String title, {VoidCallback? onTap, Widget? trailing}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -456,6 +511,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
             const Spacer(),
+            if (trailing != null) ...[
+              trailing,
+              const SizedBox(width: 12),
+            ],
             const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.textGray),
           ],
         ),

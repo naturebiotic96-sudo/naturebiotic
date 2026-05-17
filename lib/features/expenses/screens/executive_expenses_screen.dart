@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
+import 'package:nature_biotic/features/expenses/screens/expense_detail_screen.dart';
 
 class ExecutiveExpenseDashboard extends StatefulWidget {
   const ExecutiveExpenseDashboard({super.key});
@@ -16,6 +17,7 @@ class ExecutiveExpenseDashboard extends StatefulWidget {
 
 class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
   Map<String, dynamic>? _activeExpense;
+  List<Map<String, dynamic>> _history = [];
   bool _isLoading = true;
   bool _isTelecaller = false;
   bool _isManager = false;
@@ -36,10 +38,12 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
         final expense = await SupabaseService.getActiveExpenseForExecutive(
           userId,
         );
+        final history = await SupabaseService.getExpenseHistory(userId: userId);
         setState(() {
           _isTelecaller = profile?['role'] == 'telecaller';
           _isManager = profile?['role'] == 'manager';
           _activeExpense = expense;
+          _history = history;
         });
       }
     } catch (e) {
@@ -77,9 +81,43 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
     }
 
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            (_isTelecaller || _isManager) ? 'Expenses' : 'Trip Expenses',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+          ),
+          bottom: TabBar(
+            labelColor: AppColors.primary,
+            unselectedLabelColor: AppColors.textGray,
+            indicatorColor: AppColors.primary,
+            labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
+            tabs: const [
+              Tab(text: 'Active Trip / Daily'),
+              Tab(text: 'Expense History'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _buildActiveTabContent(),
+            _buildHistoryTabContent(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActiveTabContent() {
     if (_activeExpense == null) {
       return _buildNoActiveTripPlaceholder();
     }
@@ -104,7 +142,6 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
 
   Widget _buildNoActiveTripPlaceholder() {
     return Scaffold(
-      appBar: AppBar(title: const Text('Expenses')),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -176,7 +213,6 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
   Widget _buildPendingReceipt() {
     final amount = _activeExpense!['amount_allotted'];
     return Scaffold(
-      appBar: AppBar(title: const Text('New Allotment')),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -241,7 +277,6 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
     final balance = allotted - spent;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Current Trip')),
       body: Column(
         children: [
           Container(
@@ -428,25 +463,29 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
     );
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isClaim ? 'Submit Claim' : 'Return Balance'),
-        actions: [
-          if (!isClaim)
-            TextButton.icon(
-              onPressed: () async {
-                setState(() => _isLoading = true);
-                await SupabaseService.resumeTrip(_activeExpense!['id']);
-                _loadActiveExpense();
-              },
-              icon: const Icon(Icons.play_circle_outline, size: 16),
-              label: const Text('Resume Trip', style: TextStyle(fontSize: 12)),
-            ),
-        ],
-      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
+            if (!isClaim) ...[
+              Align(
+                alignment: Alignment.topRight,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    setState(() => _isLoading = true);
+                    await SupabaseService.resumeTrip(_activeExpense!['id']);
+                    _loadActiveExpense();
+                  },
+                  icon: const Icon(Icons.play_circle_outline, size: 16, color: AppColors.primary),
+                  label: const Text('Resume Trip', style: TextStyle(fontSize: 12, color: AppColors.primary)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.primary),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             Icon(
               isClaim
                   ? Icons.add_moderator_rounded
@@ -669,6 +708,215 @@ class _ExecutiveExpenseDashboardState extends State<ExecutiveExpenseDashboard> {
         shape: BoxShape.circle,
       ),
       child: Icon(icon, color: color, size: 20),
+    );
+  }
+
+  Widget _buildHistoryTabContent() {
+    if (_history.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _loadActiveExpense,
+        color: AppColors.primary,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(vertical: 80, horizontal: 24),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.receipt_long_rounded,
+                  size: 80,
+                  color: AppColors.primary.withOpacity(0.15),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'No Expense History',
+                  style: GoogleFonts.outfit(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Your past trips and daily expenses will show up here.',
+                  style: TextStyle(color: AppColors.textGray),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  onPressed: _loadActiveExpense,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Refresh'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadActiveExpense,
+      color: AppColors.primary,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _history.length,
+        itemBuilder: (context, index) {
+          final expense = _history[index];
+          String dateStr = 'N/A';
+          if (expense['created_at'] != null) {
+            try {
+              dateStr = DateFormat('dd MMM yyyy, hh:mm a').format(
+                DateTime.parse(expense['created_at']),
+              );
+            } catch (_) {}
+          }
+
+          final allottedVal = expense['amount_allotted'];
+          final double allotted = (allottedVal is num)
+              ? allottedVal.toDouble()
+              : (double.tryParse(allottedVal?.toString() ?? '0') ?? 0.0);
+
+          final items = List<dynamic>.from(expense['expense_items'] ?? []);
+          double spent = 0;
+          for (var item in items) {
+            final amt = item['amount'];
+            spent += (amt is num)
+                ? amt.toDouble()
+                : (double.tryParse(amt?.toString() ?? '0') ?? 0.0);
+          }
+
+          final returnVal = expense['return_amount'];
+          final double returnAmount = (returnVal is num)
+              ? returnVal.toDouble()
+              : (double.tryParse(returnVal?.toString() ?? '0') ?? 0.0);
+
+          final status = expense['status'];
+          final returnStatus = expense['return_status'];
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.grey.shade200),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ExpenseDetailScreen(expense: expense),
+                  ),
+                ).then((_) => _loadActiveExpense());
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          dateStr,
+                          style: GoogleFonts.outfit(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textGray,
+                          ),
+                        ),
+                        _buildStatusChip(status, returnStatus, returnAmount),
+                      ],
+                    ),
+                    const Divider(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _expenseSummaryCol('Allotted', '₹${allotted.toStringAsFixed(0)}', AppColors.primary),
+                        _expenseSummaryCol('Spent', '₹${spent.toStringAsFixed(0)}', Colors.orange),
+                        _expenseSummaryCol(
+                          returnAmount < 0 ? 'Claim' : 'Returned',
+                          '₹${returnAmount.abs().toStringAsFixed(0)}',
+                          returnAmount < 0 ? Colors.deepOrange : Colors.green,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _expenseSummaryCol(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: AppColors.textGray),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: GoogleFonts.outfit(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusChip(String? status, String? returnStatus, double returnAmount) {
+    String label = status ?? 'UNKNOWN';
+    Color color = Colors.grey;
+
+    if (status == 'ACTIVE') {
+      label = 'Active';
+      color = Colors.green;
+    } else if (status == 'CLOSED') {
+      label = 'Closed';
+      color = Colors.blue;
+    }
+
+    if (returnStatus == 'PENDING') {
+      if (returnAmount < 0) {
+        label = 'Claim Pending';
+        color = Colors.deepOrange;
+      } else {
+        label = 'Return Pending';
+        color = Colors.orange;
+      }
+    } else if (returnStatus == 'APPROVED') {
+      label = 'Approved / Settled';
+      color = Colors.blue;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 }

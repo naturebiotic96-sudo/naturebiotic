@@ -16,6 +16,7 @@ class ExpenseDetailScreen extends StatefulWidget {
 class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   late Map<String, dynamic> _data;
   bool _isLoading = true;
+  String _userRole = 'manager';
 
   @override
   void initState() {
@@ -26,10 +27,15 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
   Future<void> _fetchFullDetails() async {
     try {
-      final fullData = await SupabaseService.getExpenseById(widget.expense['id']);
+      final results = await Future.wait([
+        SupabaseService.getExpenseById(widget.expense['id']),
+        SupabaseService.getProfile(),
+      ]);
       if (mounted) {
         setState(() {
-          _data = fullData;
+          _data = results[0] as Map<String, dynamic>;
+          final profile = results[1] as Map<String, dynamic>?;
+          _userRole = profile?['role'] ?? 'manager';
           _isLoading = false;
         });
       }
@@ -94,7 +100,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: _data['return_status'] == 'PENDING' ? _buildApprovalActions() : null,
+      bottomNavigationBar: (_data['return_status'] == 'PENDING' && _userRole != 'admin') ? _buildApprovalActions() : null,
     );
   }
 

@@ -196,10 +196,12 @@ class SupabaseService {
   // Get current user profile
   static Future<Map<String, dynamic>?> getProfile() async {
     try {
-      if (_cachedProfile != null) return _cachedProfile;
-      
       final user = client.auth.currentUser;
       if (user == null) return null;
+
+      if (_cachedProfile != null && _cachedProfile!['id'] == user.id) {
+        return _cachedProfile;
+      }
 
       final response = await client
           .from('profiles')
@@ -1303,6 +1305,7 @@ class SupabaseService {
     final userId = client.auth.currentUser?.id;
     if (userId == null) return;
     await client.from('profiles').update(_cleanPayload(data)).eq('id', userId);
+    _cachedProfile = null;
   }
 
   // Update password
