@@ -1331,10 +1331,28 @@ class _DashboardScreenState extends State<DashboardScreen>
     return null;
   }
 
-  void _showStartTripDialog() {
+  void _showStartTripDialog() async {
     if (_activeTrip == null) {
       // Step 1: Create the trip record if it doesn't exist
-      SupabaseService.startExecutiveTrip().then((_) => _loadDashboardData());
+      final newTripId = await SupabaseService.startExecutiveTrip();
+      await _loadDashboardData();
+      if (newTripId == null || !mounted) return;
+
+      // Step 2: Show the odometer form immediately
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder:
+              (context) => StartTripForm(
+                expenseId: newTripId,
+                onStarted: () {
+                  Navigator.pop(context);
+                  _loadDashboardData();
+                },
+                onCapture: () => _captureAndUpload('expense-documents'),
+              ),
+        ),
+      );
       return;
     }
 
@@ -1531,15 +1549,19 @@ class _DashboardScreenState extends State<DashboardScreen>
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF2E7D32), Color(0xFF1B5E20)],
+                          gradient: LinearGradient(
+                            colors: (_todayAttendance != null && _todayAttendance!['check_out_time'] == null)
+                                ? [const Color(0xFFEF6C00), const Color(0xFFE65100)]
+                                : [const Color(0xFF2E7D32), const Color(0xFF1B5E20)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(14),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF1B5E20).withOpacity(0.3),
+                              color: (_todayAttendance != null && _todayAttendance!['check_out_time'] == null)
+                                  ? const Color(0xFFE65100).withOpacity(0.3)
+                                  : const Color(0xFF1B5E20).withOpacity(0.3),
                               blurRadius: 8,
                               offset: const Offset(0, 3),
                             ),
@@ -1548,15 +1570,19 @@ class _DashboardScreenState extends State<DashboardScreen>
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
-                              Icons.camera_enhance_rounded,
+                            Icon(
+                              (_todayAttendance != null && _todayAttendance!['check_out_time'] == null)
+                                  ? Icons.exit_to_app_rounded
+                                  : Icons.camera_enhance_rounded,
                               color: Colors.white,
                               size: 14,
                             ),
                             if (showLabels) ...[
                               const SizedBox(width: 6),
                               Text(
-                                'Check In',
+                                (_todayAttendance != null && _todayAttendance!['check_out_time'] == null)
+                                    ? 'Check Out'
+                                    : 'Check In',
                                 style: GoogleFonts.outfit(
                                   color: Colors.white,
                                   fontSize: 11,
@@ -1569,10 +1595,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                     ),
                   const SizedBox(width: 4),
-                  /* // Trip/Odometer Action
-                  if (_isExecutive || _isTelecaller)
-                    _buildTripActionButton(showLabels),
-                  const SizedBox(width: 4), */
+                  // Trip/Odometer Action
+                  _buildTripActionButton(showLabels),
+                  const SizedBox(width: 4),
                   _headerActionIcon(
                     icon: Icons.power_settings_new_rounded,
                     color: Colors.redAccent,
@@ -1665,12 +1690,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     } else {
       return const SizedBox.shrink();
     }
-
-    // Hide Start Trip/Enter Odo if not checked in (since it's now inside check-in)
-    if (_todayAttendance == null && !tripInProgress) {
-      return const SizedBox.shrink();
-    }
-
     return GestureDetector(
       onTap: onTap,
       child: Container(

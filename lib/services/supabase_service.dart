@@ -2383,6 +2383,9 @@ class SupabaseService {
         .order('created_at', ascending: false)
         .limit(1)
         .maybeSingle();
+    if (response != null && response['end_odometer_reading'] != null) {
+      return null;
+    }
     return response;
   }
 
